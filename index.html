@@ -25,7 +25,7 @@ button.secondary{background:#eeeef6;color:#333}.row{display:grid;grid-template-c
 h2{font-size:18px;margin:0 0 13px}.expense{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)}.expense:last-child{border-bottom:0}.expense b{font-size:15px}.expense small{display:block;color:var(--muted);margin-top:3px}.expense-right{text-align:right;white-space:nowrap}.delete{width:auto;padding:5px 8px;background:#fff0f0;color:var(--danger);margin-top:5px;font-size:12px}
 .bar{height:10px;background:#eee;border-radius:99px;overflow:hidden;margin-top:5px}.fill{height:100%;background:var(--accent);border-radius:99px}
 .empty{text-align:center;color:var(--muted);padding:18px}.section-title{display:flex;justify-content:space-between;align-items:center}.section-title span{font-size:12px;color:var(--muted)}
-.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}.tabs button{background:#e9e8ff;color:#4b45bd}.tabs button.active{background:var(--accent);color:#fff}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}.tabs button{background:#e9e8ff;color:#4b45bd}.tabs button.active{background:var(--accent);color:#fff}
 @media(min-width:700px){.grid{grid-template-columns:repeat(4,1fr)}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.formgrid .full{grid-column:1/-1}}
 </style>
 </head>
@@ -40,6 +40,7 @@ h2{font-size:18px;margin:0 0 13px}.expense{display:flex;justify-content:space-be
 <div class="tabs">
 <button id="expenseTab" class="active" onclick="showTab('expense')">➕ Daily Expense</button>
 <button id="incomeTab" onclick="showTab('income')">💵 Monthly Income</button>
+<button id="lendTab" onclick="showTab('lend')">🤝 Money Lend</button>
 </div>
 
 <section id="expenseForm" class="card">
@@ -68,7 +69,63 @@ h2{font-size:18px;margin:0 0 13px}.expense{display:flex;justify-content:space-be
 <div class="field"><label>Income for selected month (₹)</label><input id="income" type="number" min="0" step="0.01" placeholder="e.g. 30000"></div>
 <button onclick="saveIncome()">Save Monthly Income</button>
 </section>
+<section id="lendForm" class="card" style="display:none">
+<h2>🤝 Money Lend</h2>
 
+<div class="formgrid">
+
+<div class="field">
+<label>Person's name</label>
+<input id="lendPerson" type="text" placeholder="e.g. Priya">
+</div>
+
+<div class="field">
+<label>Amount (₹)</label>
+<input id="lendAmount" type="number" min="0" step="0.01" placeholder="e.g. 500">
+</div>
+
+<div class="field">
+<label>Direction</label>
+<select id="lendDirection">
+<option value="owed_to_me">They owe me</option>
+<option value="i_owe">I owe them</option>
+</select>
+</div>
+
+<div class="field">
+<label>Date</label>
+<input id="lendDate" type="date">
+</div>
+
+<div class="field full">
+<label>Note (optional)</label>
+<input id="lendNote" type="text" placeholder="e.g. Lunch money">
+</div>
+
+<div class="full">
+<button onclick="addLend()">Save Money Lend</button>
+</div>
+
+</div>
+</section>
+
+<div class="card">
+<h2>🤝 Money Lend Summary</h2>
+
+<div class="grid">
+<div class="stat">
+<small>They owe me</small>
+<b id="owedToMe">₹0</b>
+</div>
+
+<div class="stat">
+<small>I owe them</small>
+<b id="iOwe">₹0</b>
+</div>
+</div>
+
+<div id="lendList"></div>
+</div>
 <div class="grid">
 <div class="card stat"><small>Monthly income</small><b id="totalIncome">₹0</b></div>
 <div class="card stat"><small>Total expenses</small><b id="totalExpense">₹0</b></div>
@@ -97,19 +154,25 @@ h2{font-size:18px;margin:0 0 13px}.expense{display:flex;justify-content:space-be
 </main>
 
 <script>
-const categories=["Food","Snack","Transport","Shopping","Rent","Medicine","Entertainment","Savings","Fruits","Online Delivery / Quick Commerce","Miscellaneous","Others"];
+const categories=["Food","Snack","Tea/Coffee","Transport","Shopping","Rent","Medicine","Entertainment","Savings","Fruits","Online Delivery / Quick Commerce","Miscellaneous","Others"];
 const payments=["UPI","Cash","Card","Bank transfer","Other"];
 const priorities=["Essential","Important","Personal","Treat / Fun","Unnecessary"];
-let data=JSON.parse(localStorage.getItem("expenseTrackerData")||'{"expenses":[],"income":{}}');
+let data=JSON.parse(localStorage.getItem("expenseTrackerData")||'{"expenses":[],"income":{},"lends":[]}');
+
+if(!data.lends) data.lends=[];
 
 const $=id=>document.getElementById(id);
 function money(n){return "₹"+Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:2});}
 function ym(date){return date.slice(0,7);}
 function monthName(v){let [y,m]=v.split("-");return new Date(y,m-1,1).toLocaleString("en-IN",{month:"long",year:"numeric"});}
-function save(){localStorage.setItem("expenseTrackerData",JSON.stringify(data));render();}
-function init(){
+function save(){
+ localStorage.setItem("expenseTrackerData",JSON.stringify(data));
+ render();
+ renderLends();
+}function init(){
  categories.forEach(c=>$("category").insertAdjacentHTML("beforeend",`<option>${c}</option>`));
  $("date").value=new Date().toISOString().slice(0,10);
+ $("lendDate").value=new Date().toISOString().slice(0,10);
  let now=new Date(), start=now.getFullYear()-1, end=now.getFullYear()+1;
  for(let y=start;y<=end;y++)for(let m=1;m<=12;m++){let v=`${y}-${String(m).padStart(2,"0")}`;$("monthSelect").insertAdjacentHTML("beforeend",`<option value="${v}">${monthName(v)}</option>`);}
  setCurrentMonth(); render();
@@ -132,8 +195,20 @@ function saveIncome(){
 function showTab(tab){
  $("expenseForm").style.display=tab==="expense"?"block":"none";
  $("incomeForm").style.display=tab==="income"?"block":"none";
- $("expenseTab").classList.toggle("active",tab==="expense");$("incomeTab").classList.toggle("active",tab==="income");
- if(tab==="income")$("income").value=data.income[selected()]??"";
+ $("lendForm").style.display=tab==="lend"?"block":"none";
+
+ $("expenseTab").classList.toggle("active",tab==="expense");
+ $("incomeTab").classList.toggle("active",tab==="income");
+ $("lendTab").classList.toggle("active",tab==="lend");
+
+ if(tab==="income"){
+   $("income").value=data.income[selected()]??"";
+ }
+
+ if(tab==="lend"){
+   $("lendDate").value=new Date().toISOString().slice(0,10);
+   renderLends();
+ }
 }
 function render(){
  let m=selected(), ex=data.expenses.filter(e=>ym(e.date)===m), income=Number(data.income[m]||0), total=ex.reduce((s,e)=>s+e.amount,0);
@@ -152,6 +227,108 @@ function exportCSV(){
  let rows=[["Date","Amount","Category","Priority","Payment Method","Note"],...data.expenses.map(e=>[e.date,e.amount,e.category,e.priority,e.payment,e.note])];
  let csv=rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(",")).join("\n");
  let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="my_expenses.csv";a.click();
+}
+function addLend(){
+
+ let person=$("lendPerson").value.trim();
+ let amount=Number($("lendAmount").value);
+ let direction=$("lendDirection").value;
+ let date=$("lendDate").value;
+ let note=$("lendNote").value.trim();
+
+ if(!person || !amount || amount<=0 || !date){
+   alert("Please enter the person's name, amount and date.");
+   return;
+ }
+
+ data.lends.push({
+   id:Date.now(),
+   person,
+   amount,
+   direction,
+   date,
+   note
+ });
+
+ $("lendPerson").value="";
+ $("lendAmount").value="";
+ $("lendNote").value="";
+
+ save();
+ renderLends();
+
+ alert("Money lend record saved.");
+}
+
+
+function renderLends(){
+
+ if(!data.lends) data.lends=[];
+
+ let owedToMe=data.lends
+   .filter(x=>x.direction==="owed_to_me")
+   .reduce((sum,x)=>sum+Number(x.amount),0);
+
+ let iOwe=data.lends
+   .filter(x=>x.direction==="i_owe")
+   .reduce((sum,x)=>sum+Number(x.amount),0);
+
+ $("owedToMe").textContent=money(owedToMe);
+ $("iOwe").textContent=money(iOwe);
+
+ let sorted=[...data.lends].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+
+ $("lendList").innerHTML=sorted.map(x=>`
+
+ <div class="expense">
+
+   <div>
+     <b>${escapeHTML(x.person)}</b>
+
+     <small>
+       ${x.date} ·
+       ${x.direction==="owed_to_me" ? "They owe me" : "I owe them"}
+       ${x.note ? " · "+escapeHTML(x.note) : ""}
+     </small>
+
+   </div>
+
+   <div class="expense-right">
+
+     <b>${money(x.amount)}</b><br>
+
+     <button class="delete" onclick="deleteLend(${x.id})">
+       Delete
+     </button>
+
+   </div>
+
+ </div>
+
+ `).join("") || '<div class="empty">No money-lend records yet.</div>';
+}
+
+
+function deleteLend(id){
+
+ if(confirm("Delete this money lend record?")){
+
+   data.lends=data.lends.filter(x=>x.id!==id);
+
+   save();
+   renderLends();
+ }
+}
+
+
+function escapeHTML(text){
+
+ return String(text)
+   .replaceAll("&","&amp;")
+   .replaceAll("<","&lt;")
+   .replaceAll(">","&gt;")
+   .replaceAll('"',"&quot;")
+   .replaceAll("'","&#039;");
 }
 init();
 </script>
